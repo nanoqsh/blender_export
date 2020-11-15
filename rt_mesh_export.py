@@ -261,7 +261,7 @@ def export_action(act):
             # If the amplitude is zero, then remove the entire axis
             for axis, am in ampls.items():
                 low, high = am
-                # But, if the immutable value is not zero,
+                # But, if the constant value is not zero,
                 # then leave it for first frame
                 leave_first = low != 0.0
                 if abs(low - high) <= ANIMATION_PRECISION:
