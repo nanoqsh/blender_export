@@ -241,7 +241,8 @@ def export_action(act):
             }
 
             # Include only if value is not default
-            if ease != "in":
+            # and interpolation uses easing
+            if ease != "in" and intr not in ["CONSTANT", "LINEAR", "BEZIER"]:
                 rec["ease"] = ease
 
             # Include only if value is not default
