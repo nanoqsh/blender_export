@@ -38,27 +38,36 @@ class Export(Operator, ExportHelper):
         items=[
             ("MESH", "Mesh", "Export a Mesh"),
             ("ACTION", "Action", "Export an Action"),
+            ("SKELETON", "Skeleton", "Export a Skeleton"),
         ],
     )
-    
 
-    def execute(self, context):
+
+    def check_selection(self, context):
         obj = context.active_object
-        go = True
+        ok = True
         if self.to_export == "MESH":
-            go = (
+            ok = (
                 obj is not None
                 and obj.data is not None
                 and isinstance(obj.data, bpy.types.Mesh)
                 )
         elif self.to_export == "ACTION":
-            go = (obj is not None
+            ok = (obj is not None
                 and obj.animation_data is not None
                 and obj.animation_data.action is not None
                 and isinstance(obj.animation_data.action, bpy.types.Action)
                 )
-        
-        if not go:
+        elif self.to_export == "SKELETON":
+            ok = (obj is not None
+                and obj.data is not None
+                and isinstance(obj.data, bpy.types.Armature)
+                )
+        return ok
+
+
+    def execute(self, context):
+        if not self.check_selection(context):
             self.report({"WARNING"}, "Object is not selected")
             return {"CANCELLED"}
 
@@ -67,6 +76,8 @@ class Export(Operator, ExportHelper):
             ex = self.export_mesh(context)
         elif self.to_export == "ACTION":
             ex = self.export_action(context)
+        elif self.to_export == "SKELETON":
+            ex = self.export_skeleton(context)
 
         indent = None
         if self.enable_indent:
@@ -89,6 +100,12 @@ class Export(Operator, ExportHelper):
     def export_action(self, context):
         act = context.active_object.animation_data.action
         ex = export_action(act)
+        return ex
+    
+
+    def export_skeleton(self, context):
+        skeleton = context.active_object.data
+        ex = export_skeleton(skeleton)
         return ex
 
 
@@ -310,3 +327,33 @@ easing = {
     "EASE_OUT": "out",
     "EASE_IN_OUT": "in_out",
 }
+
+
+def export_skeleton(skeleton):
+    bones = {}
+
+    # Find the root
+    root = None
+    for b in skeleton.bones:
+        if b.parent is None:
+            root = b.name
+            break
+
+    for b in skeleton.bones:
+        head = b.head
+        tail = b.tail
+        children = list(map(lambda c: c.name, b.children))
+        bone = {
+            "h": [head.x, head.y, head.z],
+            "t": [tail.x, tail.y, tail.z],
+        }
+
+        if children:
+            bone["c"] = children
+
+        bones[b.name] = bone
+
+    return {
+        "root": root,
+        "bones": bones,
+    }
