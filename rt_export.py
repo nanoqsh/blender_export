@@ -203,7 +203,8 @@ ANIMATION_PRECISION = 0.000_000_01
 
 
 def export_action(act):
-    frames = []
+    start = None
+    end = None
     bones = {}
 
     for c in act.fcurves:
@@ -217,18 +218,10 @@ def export_action(act):
 
         bone = bones[name]
         for k in c.keyframe_points:
-            frame = k.co[0]
-            frame_idx = None
+            frame = int(k.co[0])
 
-            # Find the frame index
-            for i, f in enumerate(frames):
-                if abs(f - frame) <= ANIMATION_PRECISION:
-                    frame_idx = i
-                    break
-            # Add new frame if not found
-            else:
-                frame_idx = len(frames)
-                frames.append(frame)
+            start = frame if start is None else min(start, frame)
+            end = frame if end is None else max(end, frame)
 
             ease = None
             if k.easing == "AUTO":
@@ -244,7 +237,7 @@ def export_action(act):
             intr = k.interpolation
             rec = {
                 "a": axis,
-                "f": frame_idx,
+                "f": frame,
                 "v": value,
             }
 
@@ -301,9 +294,12 @@ def export_action(act):
                 if abs(low - high) <= ANIMATION_PRECISION:
                     p = lambda r: r["a"] != axis or (leave_first and r["f"] == 0)
                     rs = list(filter(p, rs))
+    
+    if start is None or end is None:
+        raise ValueError("Failed to export an empty action")
 
     return {
-        "frames": frames,
+        "range": [start, end],
         "bones": bones,
     }
 
