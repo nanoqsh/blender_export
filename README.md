@@ -1,2 +1,2 @@
 # blender_export
-Blender addon for mesh exporting in json format
+Blender addon for exporting meshes, actions (animations) and skeletons in json format
