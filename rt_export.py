@@ -205,18 +205,19 @@ ANIMATION_PRECISION = 0.000_000_01
 def export_action(act):
     start = None
     end = None
-    bones = {}
+    objects = {}
 
     for c in act.fcurves:
         p = parse_path(c.data_path, c.array_index)
         if p is None:
             continue
-        name, ty, axis = p
+        name, ty, cord = p
+        axis = f"{ty}_{cord}" 
 
-        if name not in bones:
-            bones[name] = {}
+        if name not in objects:
+            objects[name] = {}
 
-        bone = bones[name]
+        obj = objects[name]
         for k in c.keyframe_points:
             frame = int(k.co[0])
 
@@ -235,8 +236,7 @@ def export_action(act):
 
             value = k.co[1]
             intr = k.interpolation
-            rec = {
-                "a": axis,
+            node = {
                 "f": frame,
                 "v": value,
             }
@@ -244,7 +244,7 @@ def export_action(act):
             # Include only if value is not default
             # and interpolation uses easing
             if ease != "in" and intr not in ["CONSTANT", "LINEAR", "BEZIER"]:
-                rec["ease"] = ease
+                node["ease"] = ease
 
             # Include only if value is not default
             if intr != "BEZIER":
@@ -256,52 +256,75 @@ def export_action(act):
                 else:
                     named = intr.lower()
 
-                rec["intr"] = named
+                node["intr"] = named
             
             # If intr type is bezier, add 'l' and 'r' attributes
             if intr == "BEZIER":
                 l = k.handle_left
                 r = k.handle_right
-                rec["l"] = [l[0], l[1]]
-                rec["r"] = [r[0], r[1]]
+                node["l"] = [l[0], l[1]]
+                node["r"] = [r[0], r[1]]
             
-            if ty in bone:
-                bone[ty].append(rec)
+            if axis in obj:
+                obj[axis].append(node)
             else:
-                bone[ty] = [rec]
-    
-    # Remove unnecessary frame points
-    for b in bones.values():
-        for rs in b.values():
-            # Count the amplitude of axis
-            ampls = {}
+                obj[axis] = [node]
 
-            for r in rs:
-                axis = r["a"]
-                val = r["v"]
-                if axis in ampls:
-                    low, high = ampls[axis]
-                    ampls[axis] = (min(low, val), max(high, val))
+    # Remove unnecessary nodes
+    new_objects = {}
+    for name, obj in objects.items():
+        new_obj = {}
+        for axis, nodes in obj.items():
+            elastic = False
+            flat = True
+            ampl = None
+            for node in nodes:
+                if "intr" in node and node["intr"] == "elastic":
+                    elastic = True
+                
+                if ("l" in node and node["l"][1] != node["v"]
+                and "r" in node and node["r"][1] != node["v"]):
+                    flat = False
+
+                val = node["v"]
+                if ampl is None:
+                    ampl = (val, val)
                 else:
-                    ampls[axis] = (val, val)
+                    low, high = ampl
+                    ampl = (min(low, val), max(high, val))
 
-            # If the amplitude is zero, then remove the entire axis
-            for axis, am in ampls.items():
-                low, high = am
-                # But, if the constant value is not zero,
-                # then leave it for first frame
-                leave_first = low != 0.0
-                if abs(low - high) <= ANIMATION_PRECISION:
-                    p = lambda r: r["a"] != axis or (leave_first and r["f"] == 0)
-                    rs = list(filter(p, rs))
-    
+            low, high = ampl
+            if abs(low - high) < ANIMATION_PRECISION and not elastic and flat:
+                if low != DEFAULTS[axis]:
+                    first_node = None
+                    for node in nodes:
+                        if first_node is None or node["f"] < first_node["f"]:
+                            first_node = node  
+                    new_obj[axis] = [first_node]
+            else:
+                new_obj[axis] = nodes
+
+        if new_obj:
+            new_objects[name] = new_obj
+
     if start is None or end is None:
         raise ValueError("Failed to export an empty action")
-
+    
     return {
         "range": [start, end],
-        "bones": bones,
+        "objects": new_objects,
     }
+
+
+DEFAULTS = {
+    "pos_x": 0.0,
+    "pos_y": 0.0,
+    "pos_z": 0.0,
+    "rot_w": 1.0,
+    "rot_x": 0.0,
+    "rot_y": 0.0,
+    "rot_z": 0.0,
+}
 
 
 def parse_path(path, idx):
@@ -310,30 +333,30 @@ def parse_path(path, idx):
     name = path[nl + 2:nr]
 
     ty = None
-    axis = None
+    cord = None
     if path.endswith("rotation_quaternion"):
         ty = "rot"
         if idx == 0:
-            axis = "w"
+            cord = "w"
         elif idx == 1:
-            axis = "x"
+            cord = "x"
         elif idx == 2:
-            axis = "y"
+            cord = "y"
         elif idx == 3:
-            axis = "z"
+            cord = "z"
     elif path.endswith("location"):
         ty = "pos"
         if idx == 0:
-            axis = "x"
+            cord = "x"
         elif idx == 1:
-            axis = "y"
+            cord = "y"
         elif idx == 2:
-            axis = "z"
+            cord = "z"
 
     if ty is None:
         return None
     else:
-        return (name, ty, axis)
+        return (name, ty, cord)
 
 
 def export_skeleton(skeleton):
