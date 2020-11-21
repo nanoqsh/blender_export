@@ -372,10 +372,12 @@ def export_skeleton(skeleton):
     for b in skeleton.bones:
         head = b.head
         tail = b.tail
+        rot = b.matrix_local.to_quaternion()
         children = list(map(lambda c: c.name, b.children))
         bone = {
             "h": [head.x, head.y, head.z],
             "t": [tail.x, tail.y, tail.z],
+            "r": [rot.w, rot.x, rot.y, rot.z],
         }
 
         if children:
