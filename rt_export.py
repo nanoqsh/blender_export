@@ -157,9 +157,9 @@ def export_mesh(bm, me):
             v = uv[1]
 
             verts.append({
-                "c": [x, y, z],
-                "n": [q, w, e],
-                "t": [u, v],
+                "c": norm_list([x, y, z]),
+                "n": norm_list([q, w, e]),
+                "t": [u, v], # leave uv's unnormalized
             })
             indxs.append(vert.index)
 
@@ -172,7 +172,7 @@ def export_mesh(bm, me):
             name = group_names[g.group]
             groups[name].append({
                 "i": v.index,
-                "w": g.weight,
+                "w": norm(g.weight),
             })
 
     ex = {
@@ -199,7 +199,7 @@ def triangulate(bm):
         bmesh.ops.triangulate(bm, faces=bm.faces[:])
 
 
-ANIMATION_PRECISION = 0.000_000_01
+ANIMATION_PRECISION = 0.000_000_1
 
 
 def export_action(act):
@@ -238,7 +238,7 @@ def export_action(act):
             intr = k.interpolation
             node = {
                 "f": frame,
-                "v": value,
+                "v": norm(value),
             }
 
             # Include only if value is not default
@@ -262,8 +262,8 @@ def export_action(act):
             if intr == "BEZIER":
                 l = k.handle_left
                 r = k.handle_right
-                node["l"] = [l[0], l[1]]
-                node["r"] = [r[0], r[1]]
+                node["l"] = norm_list([l[0], l[1]])
+                node["r"] = norm_list([r[0], r[1]])
             
             if axis in obj:
                 obj[axis].append(node)
@@ -370,14 +370,23 @@ def export_skeleton(skeleton):
             break
 
     for b in skeleton.bones:
-        head = b.head
-        tail = b.tail
-        rot = b.matrix_local.to_quaternion()
+        head = b.head_local
+        tail = b.tail_local
+        mat = b.matrix_local
+        rot = mat.to_euler()
+        trans = mat.to_translation()
+        t = [trans.x, trans.y, trans.z]
+        h = [head.x, head.y, head.z]
+        if norm_list(t) != norm_list(h):
+            print(f"head = {h}")
+            print(f"tran = {t}")
+            raise AssertionError("Not equals")
+
         children = list(map(lambda c: c.name, b.children))
         bone = {
-            "h": [head.x, head.y, head.z],
-            "t": [tail.x, tail.y, tail.z],
-            "r": [rot.w, rot.x, rot.y, rot.z],
+            "h": norm_list(h),
+            "t": norm_list([tail.x, tail.y, tail.z]),
+            "r": norm_list([rot.x, rot.y, rot.z]),
         }
 
         if children:
@@ -389,3 +398,14 @@ def export_skeleton(skeleton):
         "root": root,
         "bones": bones,
     }
+
+
+def norm(v):
+    q = round(v, 6)
+    if q == 0.0:
+        q = 0.0
+    return q
+
+
+def norm_list(vs):
+    return list(map(norm, vs))
