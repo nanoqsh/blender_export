@@ -15,6 +15,7 @@ from bpy.props import BoolProperty, EnumProperty
 from bpy.types import Operator
 import bmesh
 import json
+import math
 
 
 class Export(Operator, ExportHelper):
@@ -131,14 +132,14 @@ def write_file(path, text):
 
 def export_mesh(bm, me):
     verts = []
-    indxs = []
     groups = {}
 
     triangulate(bm)
 
-    uv_layer = bm.loops.layers.uv.active
-    for f in bm.faces:
-        for vert in f.verts:
+    uv_layer = me.data.uv_layers.active.data
+    for face in bm.faces:
+        assert len(face.verts) == 3
+        for vert, loop in zip(reversed(face.verts), reversed(face.loops)):
             x = vert.co.x
             y = vert.co.y
             z = vert.co.z
@@ -147,21 +148,16 @@ def export_mesh(bm, me):
             w = vert.normal.y
             e = vert.normal.z
 
-            uv = None
-            for l in vert.link_loops:
-                uv_data = l[uv_layer]
-                uv = uv_data.uv
-                break
-
-            u = uv[0]
-            v = uv[1]
-
+            uv = uv_layer[loop.index].uv
+            u = uv.x
+            v = uv.y
+            
             verts.append({
-                "c": norm_list([x, y, z]),
-                "n": norm_list([q, w, e]),
-                "t": [u, v], # leave uv's unnormalized
+                # swap y and z
+                "c": norm_list([-x, z, -y]),
+                "n": norm_list([-q, e, -w]),
+                "t": [u, 1.0 - v], # leave uv's unnormalized
             })
-            indxs.append(vert.index)
 
     for g in me.vertex_groups:
         groups[g.name] = []
@@ -175,6 +171,7 @@ def export_mesh(bm, me):
                 "w": norm(g.weight),
             })
 
+    verts, indxs = make_indexes(verts)
     ex = {
         "verts": verts,
         "indxs": indxs,
@@ -197,6 +194,24 @@ def triangulate(bm):
 
     if need_triangulate:
         bmesh.ops.triangulate(bm, faces=bm.faces[:])
+
+
+def make_indexes(vs):
+    indxs = []
+    verts = []
+
+    for v in vs:
+        idx = None
+        for i, w in enumerate(verts):
+            if v == w:
+                idx = i
+                break
+        else:
+            idx = len(verts)
+            verts.append(v)
+        indxs.append(idx)
+
+    return verts, indxs
 
 
 ANIMATION_PRECISION = 0.000_000_1
@@ -382,11 +397,14 @@ def export_skeleton(skeleton):
             print(f"tran = {t}")
             raise AssertionError("Not equals")
 
+        rot.x -= math.pi / 2.0
+
         children = list(map(lambda c: c.name, b.children))
         bone = {
-            "h": norm_list(h),
-            "t": norm_list([tail.x, tail.y, tail.z]),
-            "r": norm_list([rot.x, rot.y, rot.z]),
+            # swap y and z
+            "h": norm_list([-head.x, head.z, -head.y]),
+            "t": norm_list([-tail.x, tail.z, -tail.y]),
+            "r": norm_list([-rot.x, rot.z, -rot.y]),
         }
 
         if children:
