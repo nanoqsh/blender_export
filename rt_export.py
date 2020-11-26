@@ -16,6 +16,7 @@ from bpy.types import Operator
 import bmesh
 import json
 import math
+import mathutils
 
 
 class Export(Operator, ExportHelper):
@@ -139,7 +140,7 @@ def export_mesh(bm, me):
     uv_layer = me.data.uv_layers.active.data
     for face in bm.faces:
         assert len(face.verts) == 3
-        for vert, loop in zip(reversed(face.verts), reversed(face.loops)):
+        for vert, loop in zip(face.verts, face.loops):
             x = vert.co.x
             y = vert.co.y
             z = vert.co.z
@@ -154,8 +155,8 @@ def export_mesh(bm, me):
             
             verts.append({
                 # swap y and z
-                "c": norm_list([-x, z, -y]),
-                "n": norm_list([-q, e, -w]),
+                "c": norm_list([x, z, -y]),
+                "n": norm_list([q, e, -w]),
                 "t": [u, 1.0 - v], # leave uv's unnormalized
             })
 
@@ -212,9 +213,6 @@ def make_indexes(vs):
         indxs.append(idx)
 
     return verts, indxs
-
-
-ANIMATION_PRECISION = 0.000_000_1
 
 
 def export_action(act):
@@ -310,7 +308,7 @@ def export_action(act):
 
             low, high = ampl
             if abs(low - high) < ANIMATION_PRECISION and not elastic and flat:
-                if low != DEFAULTS[axis]:
+                if low != AXIS_DEFAULTS[axis]:
                     first_node = None
                     for node in nodes:
                         if first_node is None or node["f"] < first_node["f"]:
@@ -329,17 +327,6 @@ def export_action(act):
         "range": [start, end],
         "objects": new_objects,
     }
-
-
-DEFAULTS = {
-    "pos_x": 0.0,
-    "pos_y": 0.0,
-    "pos_z": 0.0,
-    "rot_w": 1.0,
-    "rot_x": 0.0,
-    "rot_y": 0.0,
-    "rot_z": 0.0,
-}
 
 
 def parse_path(path, idx):
@@ -388,23 +375,15 @@ def export_skeleton(skeleton):
         head = b.head_local
         tail = b.tail_local
         mat = b.matrix_local
-        rot = mat.to_euler()
-        trans = mat.to_translation()
-        t = [trans.x, trans.y, trans.z]
-        h = [head.x, head.y, head.z]
-        if norm_list(t) != norm_list(h):
-            print(f"head = {h}")
-            print(f"tran = {t}")
-            raise AssertionError("Not equals")
-
-        rot.x -= math.pi / 2.0
-
+        # adj = mathutils.Quaternion((1.0, 0.0, 0.0), math.radians(-90.0))
+        # print(adj)
+        rot = ROT_ADJUSTMENT @ mat.to_quaternion()
         children = list(map(lambda c: c.name, b.children))
         bone = {
             # swap y and z
-            "h": norm_list([-head.x, head.z, -head.y]),
-            "t": norm_list([-tail.x, tail.z, -tail.y]),
-            "r": norm_list([-rot.x, rot.z, -rot.y]),
+            "h": norm_list([head.x, head.z, -head.y]),
+            "t": norm_list([tail.x, tail.z, -tail.y]),
+            "r": norm_list([-rot.w, rot.x, rot.y, rot.z]),
         }
 
         if children:
@@ -427,3 +406,16 @@ def norm(v):
 
 def norm_list(vs):
     return list(map(norm, vs))
+
+
+ANIMATION_PRECISION = 0.000_000_1
+AXIS_DEFAULTS = {
+    "pos_x": 0.0,
+    "pos_y": 0.0,
+    "pos_z": 0.0,
+    "rot_w": 1.0,
+    "rot_x": 0.0,
+    "rot_y": 0.0,
+    "rot_z": 0.0,
+} 
+ROT_ADJUSTMENT = mathutils.Quaternion((0.70710678118, -0.70710678118, 0, 0))
