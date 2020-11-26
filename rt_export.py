@@ -375,15 +375,13 @@ def export_skeleton(skeleton):
         head = b.head_local
         tail = b.tail_local
         mat = b.matrix_local
-        # adj = mathutils.Quaternion((1.0, 0.0, 0.0), math.radians(-90.0))
-        # print(adj)
-        rot = ROT_ADJUSTMENT @ mat.to_quaternion()
+        rot = mat.to_quaternion()
         children = list(map(lambda c: c.name, b.children))
         bone = {
             # swap y and z
             "h": norm_list([head.x, head.z, -head.y]),
             "t": norm_list([tail.x, tail.z, -tail.y]),
-            "r": norm_list([-rot.w, rot.x, rot.y, rot.z]),
+            "r": norm_list(rot_adjust(rot)),
         }
 
         if children:
@@ -406,6 +404,11 @@ def norm(v):
 
 def norm_list(vs):
     return list(map(norm, vs))
+
+
+def rot_adjust(rot):
+    res = ROT_ADJUSTMENT @ rot
+    return [-res.w, res.x, res.y, res.z]
 
 
 ANIMATION_PRECISION = 0.000_000_1
