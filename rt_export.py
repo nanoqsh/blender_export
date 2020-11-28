@@ -13,6 +13,7 @@ import bpy
 from bpy_extras.io_utils import ExportHelper
 from bpy.props import BoolProperty, EnumProperty
 from bpy.types import Operator
+from collections import namedtuple
 import bmesh
 import json
 import math
@@ -218,147 +219,157 @@ def make_indexes(vs):
 def export_action(act):
     start = None
     end = None
-    objects = {}
+    motions = {}
 
     for c in act.fcurves:
-        p = parse_path(c.data_path, c.array_index)
-        if p is None:
+        idx = c.array_index
+        path = parse_path(c.data_path)
+        if path is None:
             continue
-        name, ty, cord = p
-        axis = f"{ty}_{cord}" 
 
-        if name not in objects:
-            objects[name] = {}
+        if path not in motions:
+            motions[path] = []
+        nodes = motions[path]
 
-        obj = objects[name]
         for k in c.keyframe_points:
-            frame = int(k.co[0])
-
+            frame = norm(k.co[0])
+            value = norm(k.co[1])
             start = frame if start is None else min(start, frame)
             end = frame if end is None else max(end, frame)
-
-            ease = None
-            if k.easing == "AUTO":
-                ease = "out" if k.interpolation in ["BACK", "BOUNCE", "ELASTIC"] else "in"
-            elif k.easing == "EASE_IN":
-                ease = "in"
-            elif k.easing == "EASE_OUT":
-                ease = "out"
-            elif k.easing == "EASE_IN_OUT":
-                ease = "in_out"
-
-            value = k.co[1]
-            intr = k.interpolation
+            ease, curve = make_interpolation(k)
             node = {
                 "f": frame,
-                "v": norm(value),
+                "v": value,
             }
 
-            # Include only if value is not default
-            # and interpolation uses easing
-            if ease != "in" and intr not in ["CONSTANT", "LINEAR", "BEZIER"]:
-                node["ease"] = ease
-
-            # Include only if value is not default
-            if intr != "BEZIER":
-                named = None
-                if intr == "CONSTANT":
-                    named = "const"
-                elif intr == "LINEAR":
-                    named = "line"
-                else:
-                    named = intr.lower()
-
-                node["intr"] = named
+            if ease is not None:
+                node["e"] = ease
             
-            # If intr type is bezier, add 'l' and 'r' attributes
-            if intr == "BEZIER":
-                l = k.handle_left
-                r = k.handle_right
-                node["l"] = norm_list([l[0], l[1]])
-                node["r"] = norm_list([r[0], r[1]])
+            if curve is not None:
+                node["c"] = curve
             
-            if axis in obj:
-                obj[axis].append(node)
+            left = k.handle_left
+            right = k.handle_right
+            handles = Handles(left, right)
+
+            nodes.append((idx, node, handles))
+    
+    objects = {}
+    for path, nodes in motions.items():
+        name, kind = path
+        if name not in objects:
+            objects[name] = []
+        obj = objects[name]
+        motion = []
+        
+        for idx, node, handles in nodes:
+            mnode = None
+            for mot in motion:
+                if abs(mot["f"] - node["f"]) < ACTION_PRECISION:
+                    mnode = mot
+                    break
             else:
-                obj[axis] = [node]
+                values = [None, None, None]
+                if kind == "rot":
+                    values.append(None)
+                mnode = {
+                    "f": node["f"],
+                    "d": None,
+                    "k": kind,
+                    "v": values,
+                }
+                motion.append(mnode)
 
-    # Remove unnecessary nodes
-    new_objects = {}
-    for name, obj in objects.items():
-        new_obj = {}
-        for axis, nodes in obj.items():
-            elastic = False
-            flat = True
-            ampl = None
-            for node in nodes:
-                if "intr" in node and node["intr"] == "elastic":
-                    elastic = True
-                
-                if ("l" in node and node["l"][1] != node["v"]
-                and "r" in node and node["r"][1] != node["v"]):
-                    flat = False
+            value = {
+                "r": [node["v"], None],
+                "handles": handles,
+            }
 
-                val = node["v"]
-                if ampl is None:
-                    ampl = (val, val)
-                else:
-                    low, high = ampl
-                    ampl = (min(low, val), max(high, val))
+            for key in ["e", "c"]:
+                if key in node:
+                    value[key] = node[key]
 
-            low, high = ampl
-            if abs(low - high) < ANIMATION_PRECISION and not elastic and flat:
-                if low != AXIS_DEFAULTS[axis]:
-                    first_node = None
-                    for node in nodes:
-                        if first_node is None or node["f"] < first_node["f"]:
-                            first_node = node  
-                    new_obj[axis] = [first_node]
-            else:
-                new_obj[axis] = nodes
+            mnode["v"][idx] = value
+        
+        motion = sorted(motion, key=lambda mot: mot["f"])
+        for i in range(len(motion) - 1):
+            curr = motion[i]
+            next = motion[i + 1]
+            duration = next["f"] - curr["f"]
+            if duration < ACTION_PRECISION:
+                raise ValueError("Duration is too short")
+            curr["d"] = duration
+            for c, n in zip(curr["v"], next["v"]):
+                c["r"][1] = n["r"][0]
+                if "c" not in c or c["c"] == "bezier":
+                    cx, cy = c["handles"].right
+                    nx, ny = n["handles"].left
+                    c["b"] = norm_list([cx, cy, nx, ny])
+                del c["handles"]
+        
+        motion = motion[:-1]
+        for node in motion:
+            # convert node here
+            if node["k"] == "rot":
+                pass
+            elif node["k"] == "pos":
+                pass
 
-        if new_obj:
-            new_objects[name] = new_obj
-
+        obj.extend(motion)
+    
     if start is None or end is None:
         raise ValueError("Failed to export an empty action")
     
     return {
         "range": [start, end],
-        "objects": new_objects,
+        "objects": objects,
     }
 
 
-def parse_path(path, idx):
+def make_interpolation(keyframe):
+    ease = None
+    if keyframe.easing == "AUTO":
+        ease = "out" if keyframe.interpolation in ["BACK", "BOUNCE", "ELASTIC"] else "in"
+    elif keyframe.easing == "EASE_IN":
+        ease = "in"
+    elif keyframe.easing == "EASE_OUT":
+        ease = "out"
+    elif keyframe.easing == "EASE_IN_OUT":
+        ease = "in_out"
+    curve = keyframe.interpolation
+
+    # Pass ease if value is default or interpolation doesn't use easing
+    if ease == "in" or curve in ["CONSTANT", "LINEAR", "BEZIER"]:
+        ease = None
+    
+    # Pass curve if value is default
+    if curve == "BEZIER":
+        curve = None
+    elif curve == "CONSTANT":
+        curve = "const"
+    elif curve == "LINEAR":
+        curve = "line"
+    else:
+        curve = curve.lower()
+    
+    return ease, curve
+
+
+def parse_path(path):
     nl = path.find("[\"")
     nr = path.rfind("\"].")
     name = path[nl + 2:nr]
 
-    ty = None
-    cord = None
+    kind = None
     if path.endswith("rotation_quaternion"):
-        ty = "rot"
-        if idx == 0:
-            cord = "w"
-        elif idx == 1:
-            cord = "x"
-        elif idx == 2:
-            cord = "y"
-        elif idx == 3:
-            cord = "z"
+        kind = "rot"
     elif path.endswith("location"):
-        ty = "pos"
-        if idx == 0:
-            cord = "x"
-        elif idx == 1:
-            cord = "y"
-        elif idx == 2:
-            cord = "z"
+        kind = "pos"
 
-    if ty is None:
+    if kind is None:
         return None
     else:
-        return (name, ty, cord)
+        return name, kind
 
 
 def export_skeleton(skeleton):
@@ -411,14 +422,8 @@ def rot_adjust(rot):
     return [-res.w, res.x, res.y, res.z]
 
 
-ANIMATION_PRECISION = 0.000_000_1
-AXIS_DEFAULTS = {
-    "pos_x": 0.0,
-    "pos_y": 0.0,
-    "pos_z": 0.0,
-    "rot_w": 1.0,
-    "rot_x": 0.0,
-    "rot_y": 0.0,
-    "rot_z": 0.0,
-} 
+Handles = namedtuple('Handles', ['left', 'right'])
+
+
+ACTION_PRECISION = 0.000_001
 ROT_ADJUSTMENT = mathutils.Quaternion((0.70710678118, -0.70710678118, 0, 0))
