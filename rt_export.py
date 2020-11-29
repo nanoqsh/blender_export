@@ -155,7 +155,6 @@ def export_mesh(bm, me):
             v = uv.y
             
             verts.append({
-                # swap y and z
                 "c": norm_list([x, z, -y]),
                 "n": norm_list([q, e, -w]),
                 "t": [u, 1.0 - v], # leave uv's unnormalized
@@ -233,7 +232,7 @@ def export_action(act):
 
         for k in c.keyframe_points:
             frame = norm(k.co[0])
-            value = norm(k.co[1])
+            value = k.co[1]
             start = frame if start is None else min(start, frame)
             end = frame if end is None else max(end, frame)
             ease, curve = make_interpolation(k)
@@ -300,20 +299,36 @@ def export_action(act):
                 raise ValueError("Duration is too short")
             curr["d"] = duration
             for c, n in zip(curr["v"], next["v"]):
-                c["r"][1] = n["r"][0]
+                next_val = n["r"][0]
+                delta = next_val - c["r"][0]
+                c["r"][1] = next_val
                 if "c" not in c or c["c"] == "bezier":
                     cx, cy = c["handles"].right
                     nx, ny = n["handles"].left
                     c["b"] = norm_list([cx, cy, nx, ny])
                 del c["handles"]
+                if abs(delta) < ACTION_PRECISION:
+                    c["c"] = "const"
+                    if "b" in c:
+                        del c["b"]
         
         motion = motion[:-1]
         for node in motion:
-            # convert node here
             if node["k"] == "rot":
-                pass
+                val = node["v"]
+                s = mathutils.Quaternion(tuple(map(lambda x: x["r"][0], val)))
+                e = mathutils.Quaternion(tuple(map(lambda x: x["r"][1], val)))
+                s = rot_adjust(s)
+                e = rot_adjust(e)
+                for i in range(4):
+                    val[i]["r"] = norm_list([s[i], e[i]])
+                node["v"] = val
+
             elif node["k"] == "pos":
-                pass
+                a, b, c = node["v"]
+                s, e = b["r"]
+                b["r"] = norm_list([-s, -e])
+                node["v"] = [a, c, b]
 
         obj.extend(motion)
     
@@ -389,7 +404,6 @@ def export_skeleton(skeleton):
         rot = mat.to_quaternion()
         children = list(map(lambda c: c.name, b.children))
         bone = {
-            # swap y and z
             "h": norm_list([head.x, head.z, -head.y]),
             "t": norm_list([tail.x, tail.z, -tail.y]),
             "r": norm_list(rot_adjust(rot)),
@@ -419,7 +433,7 @@ def norm_list(vs):
 
 def rot_adjust(rot):
     res = ROT_ADJUSTMENT @ rot
-    return [-res.w, res.x, res.y, res.z]
+    return [res.w, res.x, res.y, res.z]
 
 
 Handles = namedtuple('Handles', ['left', 'right'])
