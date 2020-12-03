@@ -301,34 +301,38 @@ def export_action(act):
             for c, n in zip(curr["v"], next["v"]):
                 next_val = n["r"][0]
                 delta = next_val - c["r"][0]
-                c["r"][1] = next_val
+                c["r"][1] = n["r"][0]
                 if "c" not in c or c["c"] == "bezier":
                     cx, cy = c["handles"].right
                     nx, ny = n["handles"].left
-                    c["b"] = norm_list([cx, cy, nx, ny])
-                del c["handles"]
-                if abs(delta) < ACTION_PRECISION:
-                    c["c"] = "const"
-                    if "b" in c:
-                        del c["b"]
+                    c["b"] = [cx, cy, nx, ny]
         
         motion = motion[:-1]
         for node in motion:
             if node["k"] == "rot":
                 val = node["v"]
-                s = mathutils.Quaternion(tuple(map(lambda x: x["r"][0], val)))
-                e = mathutils.Quaternion(tuple(map(lambda x: x["r"][1], val)))
-                s = rot_adjust(s)
-                e = rot_adjust(e)
-                for i in range(4):
-                    val[i]["r"] = norm_list([s[i], e[i]])
+                # f = mathutils.Quaternion(tuple(map(lambda x: x["r"][0], val)))
+                # t = mathutils.Quaternion(tuple(map(lambda x: x["r"][1], val)))
+                # f = rot_adjust(f)
+                # t = rot_adjust(t)
+                # for i in range(4):
+                #     val[i]["r"] = [f[i], t[i]]
                 node["v"] = val
+                # TODO: Convert handles
 
-            elif node["k"] == "pos":
-                a, b, c = node["v"]
-                s, e = b["r"]
-                b["r"] = norm_list([-s, -e])
-                node["v"] = [a, c, b]
+            # elif node["k"] == "pos":
+            #     a, b, c = node["v"]
+            #     f, t = b["r"]
+            #     b["r"] = [-f, -t]
+            #     node["v"] = [a, c, b]
+                # TODO: Convert handles
+
+            for v in node["v"]:
+                del v["handles"]
+                fr, to = v["r"]
+                if "b" in v and abs(to - fr) < ACTION_PRECISION:
+                    v["c"] = "line"
+                    del v["b"]
 
         obj.extend(motion)
     
@@ -406,7 +410,7 @@ def export_skeleton(skeleton):
         bone = {
             "h": norm_list([head.x, head.z, -head.y]),
             "t": norm_list([tail.x, tail.z, -tail.y]),
-            "r": norm_list(rot_adjust(rot)),
+            "r": rot_adjust(rot),
         }
 
         if children:
