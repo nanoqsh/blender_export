@@ -134,6 +134,7 @@ def write_file(path, text):
 
 def export_mesh(bm, me):
     verts = []
+    old_indxs = []
     groups = {}
 
     triangulate(bm)
@@ -157,8 +158,15 @@ def export_mesh(bm, me):
             verts.append({
                 "c": norm_list([x, z, -y]),
                 "n": norm_list([q, e, -w]),
-                "t": [u, 1.0 - v], # leave uv's unnormalized
+                "t": [u, 1.0 - v],
             })
+            old_indxs.append(vert.index)
+
+    verts, indxs = make_indexes(verts)
+    ex = {
+        "verts": verts,
+        "indxs": indxs,
+    }
 
     for g in me.vertex_groups:
         groups[g.name] = []
@@ -167,16 +175,13 @@ def export_mesh(bm, me):
     for v in me.data.vertices:
         for g in v.groups:
             name = group_names[g.group]
-            groups[name].append({
-                "i": v.index,
-                "w": norm(g.weight),
-            })
-
-    verts, indxs = make_indexes(verts)
-    ex = {
-        "verts": verts,
-        "indxs": indxs,
-    }
+            new_idxs = []
+            for idx, old_idx in enumerate(indxs):
+                if old_idx == v.index:
+                    new_idxs.append(idx)
+            
+            for idx in new_idxs:
+                groups[name].append([idx, norm(g.weight)])
 
     if groups:
         ex["groups"] = groups
