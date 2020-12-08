@@ -175,13 +175,17 @@ def export_mesh(bm, me):
     for v in me.data.vertices:
         for g in v.groups:
             name = group_names[g.group]
-            new_idxs = []
-            for idx, old_idx in enumerate(indxs):
+            weight = norm(g.weight)
+            if weight <= 0.0:
+                continue
+
+            new_idxs = set()
+            for idx, old_idx in enumerate(old_indxs):
                 if old_idx == v.index:
-                    new_idxs.append(idx)
+                    new_idxs.add(indxs[idx])
             
-            for idx in new_idxs:
-                groups[name].append([idx, norm(g.weight)])
+            for new_idx in new_idxs:
+                groups[name].append([new_idx, weight])
 
     if groups:
         ex["groups"] = groups
