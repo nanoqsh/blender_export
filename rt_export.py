@@ -318,24 +318,6 @@ def export_action(act):
         
         motion = motion[:-1]
         for node in motion:
-            if node["k"] == "rot":
-                val = node["v"]
-                # f = mathutils.Quaternion(tuple(map(lambda x: x["r"][0], val)))
-                # t = mathutils.Quaternion(tuple(map(lambda x: x["r"][1], val)))
-                # f = rot_adjust(f)
-                # t = rot_adjust(t)
-                # for i in range(4):
-                #     val[i]["r"] = [f[i], t[i]]
-                node["v"] = val
-                # TODO: Convert handles
-
-            # elif node["k"] == "pos":
-            #     a, b, c = node["v"]
-            #     f, t = b["r"]
-            #     b["r"] = [-f, -t]
-            #     node["v"] = [a, c, b]
-                # TODO: Convert handles
-
             for v in node["v"]:
                 del v["handles"]
                 fr, to = v["r"]
