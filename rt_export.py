@@ -1,7 +1,7 @@
 bl_info = {
     "name": "RT Mesh Export",
     "description": "Exports meshes in RT JSON file.",
-    "author": "nanolsn",
+    "author": "nanoqsh",
     "version": (1, 0),
     "blender": (2, 80, 0),
     "support": "COMMUNITY",
@@ -417,7 +417,7 @@ def export_skeleton(skeleton):
 
 def norm(v):
     q = round(v, 6)
-    if q == 0.0:
+    if q == -0.0:
         q = 0.0
     return q
 
