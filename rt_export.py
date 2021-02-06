@@ -324,6 +324,10 @@ def export_action(act):
                 if "b" in v and abs(to - fr) < ACTION_PRECISION:
                     v["c"] = "line"
                     del v["b"]
+            # Swap rot values from [w, x, y, z] to [x, y, z, w]
+            if node["k"] == "rot":
+                w, x, y, z = node["v"]
+                node["v"] = [x, y, z, w]
 
         obj.extend(motion)
     
@@ -428,7 +432,7 @@ def norm_list(vs):
 
 def rot_adjust(rot):
     res = ROT_ADJUSTMENT @ rot
-    return [res.w, res.x, res.y, res.z]
+    return [res.x, res.y, res.z, res.w]
 
 
 Handles = namedtuple('Handles', ['left', 'right'])
