@@ -379,6 +379,8 @@ def parse_path(path):
         kind = "rot"
     elif path.endswith("location"):
         kind = "pos"
+    elif path.endswith("scale"):
+        kind = "scl"
 
     if kind is None:
         return None
