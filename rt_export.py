@@ -2,7 +2,7 @@ bl_info = {
     "name": "RT Mesh Export",
     "description": "Exports meshes in RT JSON file.",
     "author": "nanoqsh",
-    "version": (1, 0),
+    "version": (1, 2),
     "blender": (2, 80, 0),
     "support": "COMMUNITY",
     "category": "Import-Export",
@@ -47,6 +47,9 @@ class Export(Operator, ExportHelper):
 
 
     def check_selection(self, context):
+        if context.mode != 'OBJECT':
+            return False
+
         obj = context.active_object
         ok = True
         if self.to_export == "MESH":
@@ -136,12 +139,20 @@ def export_mesh(bm, me):
     verts = []
     old_indxs = []
     groups = {}
+    parts_len = len(me.face_maps)
+    parts = [[] for _ in range(parts_len)]
 
     triangulate(bm)
 
+    fm = bm.faces.layers.face_map.verify()
     uv_layer = me.data.uv_layers.active.data
-    for face in bm.faces:
+    for face_idx, face in enumerate(bm.faces):
         assert len(face.verts) == 3
+
+        map_idx = face[fm]
+        if map_idx >= 0:
+            parts[map_idx].append(face_idx)
+
         for vert, loop in zip(face.verts, face.loops):
             x = vert.co.x
             y = vert.co.y
@@ -189,6 +200,9 @@ def export_mesh(bm, me):
 
     if groups:
         ex["groups"] = groups
+    
+    if parts:
+        ex["parts"] = parts
 
     return ex
 
@@ -403,7 +417,7 @@ def export_skeleton(skeleton):
         tail = b.tail_local
         mat = b.matrix_local
         rot = mat.to_quaternion()
-        children = list(map(lambda c: c.name, b.children))
+        children = [c.name for c in b.children]
         bone = {
             "h": norm_list([head.x, head.z, -head.y]),
             "t": norm_list([tail.x, tail.z, -tail.y]),
@@ -429,7 +443,7 @@ def norm(v):
 
 
 def norm_list(vs):
-    return list(map(norm, vs))
+    return [norm(v) for v in vs]
 
 
 def rot_adjust(rot):
