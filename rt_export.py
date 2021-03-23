@@ -139,8 +139,8 @@ def export_mesh(bm, me):
     verts = []
     old_indxs = []
     groups = {}
-    parts_len = len(me.face_maps)
-    parts = [[] for _ in range(parts_len)]
+    slots_len = len(me.face_maps)
+    slots = [[] for _ in range(slots_len)]
 
     triangulate(bm)
 
@@ -151,7 +151,7 @@ def export_mesh(bm, me):
 
         map_idx = face[fm]
         if map_idx >= 0:
-            parts[map_idx].append(face_idx)
+            slots[map_idx].append(face_idx)
 
         for vert, loop in zip(face.verts, face.loops):
             x = vert.co.x
@@ -201,8 +201,8 @@ def export_mesh(bm, me):
     if groups:
         ex["groups"] = groups
     
-    if parts:
-        ex["parts"] = parts
+    if slots:
+        ex["slots"] = slots
 
     return ex
 
