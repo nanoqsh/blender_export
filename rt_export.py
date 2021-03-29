@@ -2,7 +2,7 @@ bl_info = {
     "name": "RT Mesh Export",
     "description": "Exports meshes in RT JSON file.",
     "author": "nanoqsh",
-    "version": (1, 2),
+    "version": (1, 0),
     "blender": (2, 80, 0),
     "support": "COMMUNITY",
     "category": "Import-Export",
@@ -139,8 +139,7 @@ def export_mesh(bm, me):
     verts = []
     old_indxs = []
     groups = {}
-    slots_len = len(me.face_maps)
-    slots = [[] for _ in range(slots_len)]
+    slots = {}
 
     triangulate(bm)
 
@@ -151,7 +150,11 @@ def export_mesh(bm, me):
 
         map_idx = face[fm]
         if map_idx >= 0:
-            slots[map_idx].append(face_idx)
+            slot_name = me.face_maps[map_idx].name
+            if slot_name in slots:
+                slots[slot_name].append(face_idx)
+            else:
+                slots[slot_name] = [face_idx]
 
         for vert, loop in zip(face.verts, face.loops):
             x = vert.co.x
