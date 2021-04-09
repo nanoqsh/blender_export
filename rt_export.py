@@ -173,10 +173,14 @@ def export_mesh(bm, me):
                 "c": norm_list([x, z, -y]),
                 "n": norm_list([q, e, -w]),
                 "t": [u, 1.0 - v],
+                "map_idx": map_idx,
             })
             old_indxs.append(vert.index)
 
     verts, indxs = make_indexes(verts)
+    for v in verts:
+        del v["map_idx"]
+
     ex = {
         "verts": verts,
         "indxs": indxs,
