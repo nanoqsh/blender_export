@@ -13,7 +13,8 @@ import bpy
 from bpy_extras.io_utils import ExportHelper
 from bpy.props import BoolProperty, EnumProperty
 from bpy.types import Operator
-from collections import namedtuple
+from dataclasses import dataclass
+from collections import defaultdict
 import bmesh
 import json
 import math
@@ -138,8 +139,8 @@ def write_file(path, text):
 def export_mesh(bm, me):
     verts = []
     old_indxs = []
-    groups = {}
-    slots = {}
+    groups = defaultdict(list)
+    slots = defaultdict(list)
 
     triangulate(bm)
 
@@ -151,10 +152,7 @@ def export_mesh(bm, me):
         map_idx = face[fm]
         if map_idx >= 0:
             slot_name = me.face_maps[map_idx].name
-            if slot_name in slots:
-                slots[slot_name].append(face_idx)
-            else:
-                slots[slot_name] = [face_idx]
+            slots[slot_name].append(face_idx)
 
         for vert, loop in zip(face.verts, face.loops):
             x = vert.co.x
@@ -185,9 +183,6 @@ def export_mesh(bm, me):
         "verts": verts,
         "indxs": indxs,
     }
-
-    for g in me.vertex_groups:
-        groups[g.name] = []
 
     group_names = {g.index: g.name for g in me.vertex_groups}
     for v in me.data.vertices:
@@ -248,7 +243,7 @@ def make_indexes(vs):
 def export_action(act):
     start = None
     end = None
-    motions = {}
+    motions = defaultdict(list)
 
     for c in act.fcurves:
         idx = c.array_index
@@ -256,10 +251,7 @@ def export_action(act):
         if path is None:
             continue
 
-        if path not in motions:
-            motions[path] = []
         nodes = motions[path]
-
         for k in c.keyframe_points:
             frame = norm(k.co[0])
             value = k.co[1]
@@ -277,20 +269,14 @@ def export_action(act):
             if curve is not None:
                 node["c"] = curve
             
-            left = k.handle_left
-            right = k.handle_right
-            handles = Handles(left, right)
-
+            handles = Handles(k.handle_left, k.handle_right)
             nodes.append((idx, node, handles))
     
-    objects = {}
+    objects = defaultdict(list)
     for path, nodes in motions.items():
         name, kind = path
-        if name not in objects:
-            objects[name] = []
         obj = objects[name]
         motion = []
-        
         for idx, node, handles in nodes:
             mnode = None
             for mot in motion:
@@ -320,13 +306,14 @@ def export_action(act):
 
             mnode["v"][idx] = value
         
-        motion = sorted(motion, key=lambda mot: mot["f"])
+        motion.sort(key=lambda mot: mot["f"])
         for i in range(len(motion) - 1):
             curr = motion[i]
             next = motion[i + 1]
             duration = next["f"] - curr["f"]
             if duration < ACTION_PRECISION:
                 raise ValueError("Duration is too short")
+            
             curr["d"] = duration
             for c, n in zip(curr["v"], next["v"]):
                 next_val = n["r"][0]
@@ -345,6 +332,7 @@ def export_action(act):
                 if "b" in v and abs(to - fr) < ACTION_PRECISION:
                     v["c"] = "line"
                     del v["b"]
+
             # Swap rot values from [w, x, y, z] to [x, y, z, w]
             if node["k"] == "rot":
                 w, x, y, z = node["v"]
@@ -396,7 +384,9 @@ def parse_path(path):
     name = path[nl + 2:nr]
 
     kind = None
-    if path.endswith("rotation_quaternion"):
+    if path.endswith("rotation_euler"):
+        raise ValueError("A quaternion rotation was expected, not Euler angles")
+    elif path.endswith("rotation_quaternion"):
         kind = "rot"
     elif path.endswith("location"):
         kind = "pos"
@@ -446,6 +436,7 @@ def norm(v):
     q = round(v, 6)
     if q == -0.0:
         q = 0.0
+    
     return q
 
 
@@ -458,7 +449,10 @@ def rot_adjust(rot):
     return [res.x, res.y, res.z, res.w]
 
 
-Handles = namedtuple('Handles', ['left', 'right'])
+@dataclass
+class Handles:
+    left: list[float]
+    right: list[float]
 
 
 ACTION_PRECISION = 0.000_001
