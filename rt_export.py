@@ -78,13 +78,14 @@ class Export(Operator, ExportHelper):
             self.report({"WARNING"}, "Object is not selected")
             return {"CANCELLED"}
 
-        ex = None
         if self.to_export == "MESH":
             ex = self.export_mesh(context)
         elif self.to_export == "ACTION":
             ex = self.export_action(context)
         elif self.to_export == "SKELETON":
             ex = self.export_skeleton(context)
+        else:
+            ex = None
 
         indent = None
         if self.enable_indent:
@@ -93,7 +94,7 @@ class Export(Operator, ExportHelper):
         write_file(self.filepath, json.dumps(ex, indent=indent))
         self.report({"INFO"}, f"File {self.filepath} saved")
         return {"FINISHED"}
-    
+
 
     def export_mesh(self, context):
         me = context.active_object
@@ -108,7 +109,7 @@ class Export(Operator, ExportHelper):
         act = context.active_object.animation_data.action
         ex = export_action(act)
         return ex
-    
+
 
     def export_skeleton(self, context):
         skeleton = context.active_object.data
@@ -350,17 +351,19 @@ def export_action(act):
 
 
 def make_interpolation(keyframe):
-    ease = None
+    curve = keyframe.interpolation
+
     if keyframe.easing == "AUTO":
-        ease = "out" if keyframe.interpolation in ["BACK", "BOUNCE", "ELASTIC"] else "in"
+        ease = "out" if curve in ["BACK", "BOUNCE", "ELASTIC"] else "in"
     elif keyframe.easing == "EASE_IN":
         ease = "in"
     elif keyframe.easing == "EASE_OUT":
         ease = "out"
     elif keyframe.easing == "EASE_IN_OUT":
         ease = "in_out"
-    curve = keyframe.interpolation
-
+    else:
+        ease = None
+    
     # Pass ease if value is default or interpolation doesn't use easing
     if ease == "in" or curve in ["CONSTANT", "LINEAR", "BEZIER"]:
         ease = None
@@ -383,7 +386,6 @@ def parse_path(path):
     nr = path.rfind("\"].")
     name = path[nl + 2:nr]
 
-    kind = None
     if path.endswith("rotation_euler"):
         raise ValueError("A quaternion rotation was expected, not Euler angles")
     elif path.endswith("rotation_quaternion"):
@@ -392,22 +394,22 @@ def parse_path(path):
         kind = "pos"
     elif path.endswith("scale"):
         kind = "scl"
-
-    if kind is None:
-        return None
     else:
-        return name, kind
+        return None
+
+    return name, kind
 
 
 def export_skeleton(skeleton):
     bones = {}
 
     # Find the root
-    root = None
     for b in skeleton.bones:
         if b.parent is None:
             root = b.name
             break
+    else:
+        root = None
 
     for b in skeleton.bones:
         head = b.head_local
