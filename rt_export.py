@@ -164,6 +164,9 @@ def export_mesh(bm, me):
             w = vert.normal.y
             e = vert.normal.z
 
+            if loop.index < 0:
+                raise ValueError(f"Failed to get uv map. Try to triangulate mesh")
+
             uv = uv_layer[loop.index].uv
             u = uv.x
             v = uv.y
